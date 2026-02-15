@@ -70,6 +70,8 @@ class DependencyContainer {
     }
 
     try {
+      const cacheService = this._dependencies.get("cacheService"); // Ya existente en el repo [3]
+      const realDebridService = new RealDebridService(cacheService); // Inyección
       // Initialize database
       const database = getDatabase();
       this._dependencies.set("database", database);
