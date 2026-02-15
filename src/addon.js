@@ -1,15 +1,10 @@
-/**
- * @file Main Stremio addon implementation
- * @author Cinecalidad Team
- * @version 1.0.0
- */
-
-"use strict";
-
 const { addonBuilder } = require("stremio-addon-sdk");
 const { getManifest, config } = require("../config/settings.js");
 const CineCalidadService = require("../services/cine-calidad-service.js");
 const TorrentParserService = require("../services/torrent-parser-service.js");
+// 1. IMPORTAR EL NUEVO SERVICIO
+const { RealDebridService } = require("../services/RealDebridService.js"); 
+
 const { movieMetadata } = require("../lib/metadata.js");
 const logger = require("../lib/logger");
 const { getInstance: getDatabase } = require("../lib/database");
