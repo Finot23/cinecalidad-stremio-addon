@@ -1,241 +1,101 @@
-/**
- * @fileoverview Main application entry point
- * @author Cinecalidad Team
- * @version 1.0.0
- */
-
 "use strict";
 
 const express = require("express");
-const { config, getAddonUrl } = require("./config/settings.js");
-const { createAddon } = require("./src/addon.js");
-const logger = require("./lib/logger");
+const path = require("path");
+const cors = require("cors");
+const { getManifest } = require("./config/settings"); // Tu configuración actual
+const CineCalidadAddon = require("./addon"); // Tu clase Addon principal
 
-/**
- * Application class
- * @class
- */
-class CineCalidadApp {
-  constructor() {
-    this.app = express();
-    this.server = null;
-    this.addon = null;
-  }
+const app = express();
+app.use(cors());
 
-  /**
-   * Initialize and start the application
-   * @returns {Promise<void>}
-   */
-  async start() {
-    try {
-      logger.info("Starting Cinecalidad Stremio Addon...");
+// Inicializar el Addon (Crea el DependencyContainer una sola vez)
+// Asumimos que CineCalidadAddon devuelve la instancia del addonBuilder
+const addonInterface = new CineCalidadAddon().getInterface();
 
-      await this._initializeAddon();
-      this._setupMiddleware();
-      this._setupRoutes();
-      await this._startServer();
+// 1. RUTA PARA LA PÁGINA DE CONFIGURACIÓN (FRONTEND)
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "src/web/configure.html"));
+});
 
-      logger.info("Application started successfully", {
-        port: config.server.port,
-        host: config.server.host,
-        addonUrl: getAddonUrl(),
-      });
-    } catch (error) {
-      logger.error("Failed to start application", { error: error.message });
-      process.exit(1);
+app.get("/configure", (req, res) => {
+    res.sendFile(path.join(__dirname, "src/web/configure.html"));
+});
+
+// 2. MIDDLEWARE PARA RUTAS DINÁMICAS (CAPTURA EL TOKEN)
+// Intercepta cualquier ruta que empiece con algo que parezca un token (alfanumérico largo)
+app.use("/:token([a-zA-Z0-9]+)", (req, res, next) => {
+    const token = req.params.token;
+
+    // Validación básica: Si el token es una palabra reservada del addon, saltar
+    if (["catalog", "meta", "stream", "configure", "resources"].includes(token)) {
+        return next();
     }
-  }
 
-  /**
-   * Initialize the Stremio addon
-   * @private
-   */
-  async _initializeAddon() {
-    try {
-      this.addon = await createAddon();
-      logger.info("Addon initialized successfully");
-    } catch (error) {
-      logger.error("Failed to initialize addon", { error: error.message });
-      throw error;
+    // Inyectamos el token en request para usarlo abajo
+    req.rdToken = token;
+    next();
+});
+
+// 3. MANEJO DEL MANIFEST.JSON
+app.get("/:token/manifest.json", (req, res) => {
+    const manifest = getManifest();
+    
+    // Opcional: Modificar la descripción para confirmar que está configurado
+    if (req.rdToken) {
+        manifest.description += " (Configurado con Real-Debrid)";
+        manifest.behaviorHints = { configurable: true, configurationRequired: false };
     }
-  }
 
-  /**
-   * Setup Express middleware
-   * @private
-   */
-  _setupMiddleware() {
-    // CORS middleware (required by Stremio)
-    this.app.use((req, res, next) => {
-      res.header("Access-Control-Allow-Origin", "*");
-      res.header(
-        "Access-Control-Allow-Headers",
-        "Origin, X-Requested-With, Content-Type, Accept",
-      );
-      res.header(
-        "Access-Control-Allow-Methods",
-        "GET, POST, PUT, DELETE, OPTIONS",
-      );
+    res.json(manifest);
+});
 
-      if (req.method === "OPTIONS") {
-        res.sendStatus(200);
-      } else {
-        next();
-      }
-    });
+// 4. MANEJO DE LOS RECURSOS (Stream, Catalog, Meta)
+// Esta función envuelve la llamada al addonInterface de Stremio
+const handleResource = async (req, res) => {
+    const { resource, type, id } = req.params;
+    const token = req.rdToken; // El token capturado por el middleware
 
-    // Request logging middleware
-    this.app.use((req, res, next) => {
-      logger.debug("Request received", {
-        method: req.method,
-        url: req.url,
-        userAgent: req.get("User-Agent"),
-      });
-      next();
-    });
-  }
-
-  /**
-   * Setup application routes
-   * @private
-   */
-  _setupRoutes() {
-    // Health check endpoint
-    this.app.get("/health", (req, res) => {
-      res.json({
-        status: "healthy",
-        timestamp: new Date().toISOString(),
-        version: require("./package.json").version,
-      });
-    });
-
-    // Addon routes
-    const { getRouter } = require("stremio-addon-sdk");
-    const addonRouter = getRouter(this.addon.getInterface());
-    this.app.use("/", addonRouter);
-
-    // Also expose manifest at root for compatibility
-    this.app.get("/manifest.json", (req, res) => {
-      res.json(this.addon.getInterface().manifest);
-    });
-
-    // Error handling middleware
-    this.app.use((err, req, res, next) => {
-      logger.error("Express error handler", {
-        error: err.message,
-        stack: err.stack,
-        url: req.url,
-      });
-
-      res.status(500).json({
-        error: "Internal Server Error",
-        message:
-          process.env.NODE_ENV === "development"
-            ? err.message
-            : "Something went wrong",
-      });
-    });
-
-    // 404 handler
-    this.app.use((req, res) => {
-      res.status(404).json({
-        error: "Not Found",
-        message: `Route ${req.url} not found`,
-      });
-    });
-  }
-
-  /**
-   * Start the HTTP server
-   * @private
-   * @returns {Promise<void>}
-   */
-  async _startServer() {
-    return new Promise((resolve, reject) => {
-      this.server = this.app.listen(
-        config.server.port,
-        config.server.host,
-        (err) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve();
-          }
-        },
-      );
-
-      this.server.on("error", (error) => {
-        if (error.code === "EADDRINUSE") {
-          logger.error("Port already in use", { port: config.server.port });
-        } else {
-          logger.error("Server error", { error: error.message });
+    // Construimos los argumentos para el handler
+    // AQUÍ ES DONDE PASA LA MAGIA: Pasamos el token en config
+    const args = {
+        resource,
+        type,
+        id,
+        extra: req.query, // Paginación, búsqueda, etc.
+        config: { 
+            realDebridToken: token // Esto llegará a StreamHandler.js -> handle(args)
         }
-        reject(error);
-      });
-    });
-  }
+    };
 
-  /**
-   * Graceful shutdown
-   * @returns {Promise<void>}
-   */
-  async shutdown() {
-    logger.info("Shutting down application...");
-
-    if (this.server) {
-      return new Promise((resolve) => {
-        this.server.close(() => {
-          logger.info("Server closed successfully");
-          resolve();
-        });
-      });
+    try {
+        const response = await addonInterface.handle(args);
+        
+        // Cache headers recomendados por Stremio
+        if (resource === 'stream') {
+             res.setHeader('Cache-Control', 'max-age=86400'); // Cache streams 24h
+        } else {
+             res.setHeader('Cache-Control', 'max-age=3600'); // Cache otros 1h
+        }
+        
+        res.json(response);
+    } catch (error) {
+        console.error(`Error handling request: ${error.message}`);
+        res.status(500).json({ error: "Internal Server Error" });
     }
-  }
-}
+};
 
-/**
- * Main application startup function
- */
-async function startApplication() {
-  const app = new CineCalidadApp();
+// Mapear rutas de Stremio a nuestro handler manual
+app.get("/:token/:resource/:type/:id.json", handleResource);
+// También soportar rutas sin token (para usuarios gratuitos o instalación limpia)
+app.get("/:resource/:type/:id.json", (req, res) => {
+    // Sin token en la URL
+    req.rdToken = null; 
+    handleResource(req, res);
+});
 
-  // Setup graceful shutdown
-  process.on("SIGINT", async () => {
-    logger.info("SIGINT received, shutting down gracefully...");
-    await app.shutdown();
-    process.exit(0);
-  });
-
-  process.on("SIGTERM", async () => {
-    logger.info("SIGTERM received, shutting down gracefully...");
-    await app.shutdown();
-    process.exit(0);
-  });
-
-  process.on("unhandledRejection", (reason, promise) => {
-    logger.error("Unhandled Promise Rejection", {
-      reason: reason?.message || reason,
-      promise: promise.toString(),
-    });
-  });
-
-  process.on("uncaughtException", (error) => {
-    logger.error("Uncaught Exception", {
-      error: error.message,
-      stack: error.stack,
-    });
-    process.exit(1);
-  });
-
-  await app.start();
-}
-
-// Start the application if this is the main module
-if (require.main === module) {
-  startApplication().catch((error) => {
-    logger.error("Failed to start application", { error: error.message });
-    process.exit(1);
-  });
-}
-
-module.exports = { CineCalidadApp, startApplication };
+// Iniciar servidor
+const PORT = process.env.PORT || 7000;
+app.listen(PORT, () => {
+    console.log(`Addon activo en http://localhost:${PORT}`);
+});
