@@ -4,7 +4,7 @@ services:
   cinecalidad-addon:
     build: .
     ports:
-      - "7000:7000"
+      - "7001:7000"
     environment:
       - NODE_ENV=production
       - PORT=7000

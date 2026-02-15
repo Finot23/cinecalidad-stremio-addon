@@ -5,7 +5,7 @@ const { createError, ErrorCodes } = require("../lib/errors");
 const { CacheService } = require("../services/CacheService");
 const { TorrentInfoService } = require("../services/TorrentInfoService");
 // IMPORTAR EL NUEVO SERVICIO
-const { RealDebridService } = require("../services/RealDebridService");
+const { RealDebridService } = require("../../services/RealDebridService");
 
 class StreamHandler {
   constructor(dependencies) {

@@ -68,10 +68,10 @@ class DependencyContainer {
     if (this._initialized) {
       return;
     }
-
+const cacheService = this._dependencies.get("cacheService"); // Ya existente en el repo [3]
+      const RealDebridService = require('../services/RealDebridService');  // Inyección
     try {
-      const cacheService = this._dependencies.get("cacheService"); // Ya existente en el repo [3]
-      const realDebridService = new RealDebridService(cacheService); // Inyección
+      
       // Initialize database
       const database = getDatabase();
       this._dependencies.set("database", database);
@@ -85,6 +85,9 @@ class DependencyContainer {
         detailsDelay: config.cinecalidad.detailsDelay,
       });
       this._dependencies.set("cineCalidadService", cineCalidadService);
+      // Initialize RealDebrid Service
+    const realDebridService = new RealDebridService();
+    this._dependencies.set("realDebridService", realDebridService);
 
       // Initialize torrent parser service
       const torrentParserService = TorrentParserService.getInstance();
