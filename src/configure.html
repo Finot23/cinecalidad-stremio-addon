@@ -114,5 +114,49 @@
             window.location.href = finalUrl;
         }
     </script>
+    <!-- Dentro de src/configure.html -->
+
+<form id="configForm">
+    <label for="rdToken">Real-Debrid API Token:</label>
+    <input type="text" id="rdToken" placeholder="Ej: F5A..." required>
+    <br>
+    <!-- Botón 1: Para App de Escritorio -->
+    <button type="submit" id="btnDesktop">Instalar en App (Escritorio)</button>
+    <br><br>
+    <!-- Botón 2: Para Stremio Web -->
+    <button type="button" id="btnWeb" style="background: #2ecc71;">Probar en Stremio Web</button>
+</form>
+
+<script>
+    const getInput = () => document.getElementById('rdToken').value.trim();
+    
+    // Obtener la URL base actual (ej. http://127.0.0.1:7001)
+    const getBaseUrl = () => window.location.host;
+
+    // 1. Lógica para Escritorio
+    document.getElementById('configForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const token = getInput();
+        if (!token) return alert("Falta el token");
+        
+        // Protocolo 'stremio://' fuerza a abrir la app
+        window.location.href = `stremio://${getBaseUrl()}/${token}/manifest.json`;
+    });
+
+    // 2. Lógica para Stremio Web
+    document.getElementById('btnWeb').addEventListener('click', function() {
+        const token = getInput();
+        if (!token) return alert("Falta el token");
+
+        // Construimos la URL completa del manifiesto
+        // Nota: Stremio Web requiere que la URL del addon esté codificada (URL Encoded)
+        const protocol = window.location.protocol; // http: o https:
+        const manifestUrl = `${protocol}//${getBaseUrl()}/${token}/manifest.json`;
+        const encodedUrl = encodeURIComponent(manifestUrl);
+
+        // Abrimos Stremio Web con el addon precargado
+        window.open(`https://web.stremio.com/#/addon/${encodedUrl}`, '_blank');
+    });
+</script>
 </body>
 </html>

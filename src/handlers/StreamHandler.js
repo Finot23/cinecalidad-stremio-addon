@@ -51,6 +51,12 @@ class StreamHandler {
        // ... (Manejo de error igual [12])
        throw error;
     }
+     // Ahora args.token EXISTE gracias al hack del index.js
+    const rdToken = args.token; 
+
+    // Cuando llames a procesar streams, pasa el token
+    const streams = await this._processStreams(movieData, args.id, rdToken);
+
   }
 
   // ... (Métodos auxiliares _validateRequest, _generateCacheKey, _getMovieData, 
